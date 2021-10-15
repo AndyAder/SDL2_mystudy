@@ -1,0 +1,126 @@
+이 문서는 완성본이 아니며, 개선점이나 추가 정보가 있을 때마다 수정될 예정임.
+git user.name, user.email 설정방법
+
+> git config --global user.name "XXXXX"
+> git config --global user.email "aaa@bbb.ccc"
+
+vscode+MSVC+SDL2 개발 환경설정 방법
+
+1. Download SDL2 Libraries
+
+(1) https://libsdl.org/ 에서 Development Libraries 다운로드
+  예) SDL2-devel-2.0.16-VC.zip
+(2) https://libsdl.org/projects 에서 SDL_image, SDL_mixer, SDL_ttf, SDL_net 중 필요한
+    라이브러리 다운로드 (Development Libraries)
+(3) 다운로드 받은 파일의 압축을 풀고 적절한 폴더에 위치시킴.
+(4) 링크시 필요한 lib 및 실행시 필요한 dll 은 SDL2_xxx/lib/x64(혹은 x86)/ 에 있음.
+    링크시 경로설정, 실행시 path 설정에 참고.
+
+2. c_cpp_properties.json setting example
+
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
+                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
+                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
+                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
+            "compilerPath": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64\\cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
+        }
+    ],
+    "version": 4
+}
+
+
+3. tasks.json setting example (디버그용)
+   * 릴리즈용 빌드시에는 /Zi 옵션을 없애고 /O2 옵션을 넣으면 될듯.
+   * 윈도우 프로그램 구동시 필요한 라이브러리 참조가 필요함. (예: shell32.lib 등)
+
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "C/C++: 현재파일 디버그용 빌드",
+			"command": "cl.exe",
+			"args": [
+				"/Zi",
+				"/EHsc",
+				"/nologo",
+				"/I",
+				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
+				"/I",
+				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
+				"/I",
+				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include",
+				"/I",
+				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
+				"/Fe:",
+				"${fileDirname}\\SDL_mystudy_dbg.exe",
+				"${file}",
+				"/link",
+				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2-2.0.16\\lib\\x64",
+				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\lib\\x64",
+				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\lib\\x64",
+				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\lib\\x64",
+				"/SUBSYSTEM:WINDOWS",
+				"user32.lib",
+				"kernel32.lib",
+				"shell32.lib",
+				"winmm.lib",
+				"SDL2.lib",
+				"SDL2main.lib",
+				"SDL2_image.lib",
+				"SDL2_ttf.lib",
+				"SDL2_mixer.lib"
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "cl.exe 디버그"
+		}
+	]
+}
+
+4. launch.json setting example
+
+{
+    // IntelliSense를 사용하여 가능한 특성에 대해 알아보세요.
+    // 기존 특성에 대한 설명을 보려면 가리킵니다.
+    // 자세한 내용을 보려면 https://go.microsoft.com/fwlink/?linkid=830387을(를) 방문하세요.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "cl.exe - Active 파일 디버그",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${fileDirname}\\SDL_mystudy_dbg.exe",
+            "args": [],
+            "stopAtEntry": true,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "console": "externalTerminal",
+            "preLaunchTask": "C/C++: 현재파일 디버그용 빌드"
+        }
+    ]
+}

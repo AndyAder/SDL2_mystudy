@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <SDL.h>
 
 // Vector2 struct just stores x/y coordinates
@@ -145,7 +146,7 @@ void Game::ProcessInput()
 	if (state[SDL_SCANCODE_W])
 	{
 		mPaddleDir -= 1;
-	}
+	} 
 	if (state[SDL_SCANCODE_S])
 	{
 		mPaddleDir += 1;
@@ -155,8 +156,7 @@ void Game::ProcessInput()
 void Game::UpdateGame()
 {
 	// Wait until 16ms has elapsed since last frame
-	while (!SDL_TICKS_PASSED(SDL_GetTicks(), mTicksCount + 16))
-		;
+	while (!SDL_TICKS_PASSED(SDL_GetTicks(), mTicksCount + 16));
 
 	// Delta time is the difference in ticks from last frame
 	// (converted to seconds)
@@ -244,7 +244,7 @@ void Game::GenerateOutput()
 	SDL_RenderClear(mRenderer);
 
 	// Draw walls
-	SDL_SetRenderDrawColor(mRenderer, 255, 255, 255, 255);
+	SDL_SetRenderDrawColor(mRenderer, 255, 200, 200, 255);
 	
 	// Draw top wall
 	SDL_Rect wall{
@@ -267,6 +267,7 @@ void Game::GenerateOutput()
 	SDL_RenderFillRect(mRenderer, &wall);
 	
 	// Draw paddle
+	SDL_SetRenderDrawColor(mRenderer, 255, 255, 0, 255);
 	SDL_Rect paddle{
 		static_cast<int>(mPaddlePos.x),
 		static_cast<int>(mPaddlePos.y - paddleH/2),
@@ -276,6 +277,7 @@ void Game::GenerateOutput()
 	SDL_RenderFillRect(mRenderer, &paddle);
 	
 	// Draw ball
+	SDL_SetRenderDrawColor(mRenderer, 0, 255, 0, 255);
 	SDL_Rect ball{	
 		static_cast<int>(mBallPos.x - thickness/2),
 		static_cast<int>(mBallPos.y - thickness/2),
