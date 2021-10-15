@@ -24,10 +24,10 @@ vscode+MSVC+SDL2 개발 환경설정 방법
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
-                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
-                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
-                "C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include"
+                "C:\\Users\\XXXXXX\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
+                "C:\\Users\\XXXXXX\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
+                "C:\\Users\\XXXXXX\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
+                "C:\\Users\\XXXXXX\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include"
             ],
             "defines": [
                 "_DEBUG",
@@ -45,8 +45,7 @@ vscode+MSVC+SDL2 개발 환경설정 방법
 }
 
 
-3. tasks.json setting example (디버그용)
-   * 릴리즈용 빌드시에는 /Zi 옵션을 없애고 /O2 옵션을 넣으면 될듯.
+3. tasks.json setting example
    * 윈도우 프로그램 구동시 필요한 라이브러리 참조가 필요함. (예: shell32.lib 등)
 
 {
@@ -54,28 +53,29 @@ vscode+MSVC+SDL2 개발 환경설정 방법
 	"tasks": [
 		{
 			"type": "cppbuild",
-			"label": "C/C++: 현재파일 디버그용 빌드",
+			"label": "C/C++: 디버그용 빌드",
 			"command": "cl.exe",
 			"args": [
 				"/Zi",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
 				"/EHsc",
 				"/nologo",
-				"/I",
-				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
-				"/I",
-				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
-				"/I",
-				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include",
-				"/I",
-				"C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
+//				"${fileDirname}\\*.cpp",
+				"${file}",
 				"/Fe:",
 				"${fileDirname}\\SDL_mystudy_dbg.exe",
-				"${file}",
 				"/link",
-				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2-2.0.16\\lib\\x64",
-				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\lib\\x64",
-				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\lib\\x64",
-				"/libpath:C:\\Users\\wafta\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2-2.0.16\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\lib\\x64",
 				"/SUBSYSTEM:WINDOWS",
 				"user32.lib",
 				"kernel32.lib",
@@ -97,7 +97,77 @@ vscode+MSVC+SDL2 개발 환경설정 방법
 				"kind": "build",
 				"isDefault": true
 			},
-			"detail": "cl.exe 디버그"
+			"detail": "빌드 : cl.exe 디버그"
+		},
+		{
+			"type": "cppbuild",
+			"label": "C/C++: 릴리즈용 빌드",
+			"command": "cl.exe",
+			"args": [
+				"/O2",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2-2.0.16\\include",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\include",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\include",
+				"/I",
+				"C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\include",
+				"/EHsc",
+				"/nologo",
+//				"${fileDirname}\\*.cpp",
+				"${file}",
+				"/Fe:",
+				"${fileDirname}\\SDL_mystudy_rls.exe",
+				"/link",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2-2.0.16\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_image-2.0.5\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_ttf-2.0.15\\lib\\x64",
+				"/libpath:C:\\Users\\SDS\\Documents\\SDL2_lib\\SDL2_mixer-2.0.4\\lib\\x64",
+				"/SUBSYSTEM:WINDOWS",
+				"user32.lib",
+				"kernel32.lib",
+				"shell32.lib",
+				"winmm.lib",
+				"SDL2.lib",
+				"SDL2main.lib",
+				"SDL2_image.lib",
+				"SDL2_ttf.lib",
+				"SDL2_mixer.lib"
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "빌드 : cl.exe 릴리즈"
+		},
+		{
+			"type": "cppbuild",
+			"label": "빌드 Clean",
+			"command": "del",
+			"args": [
+				"${fileDirname}\\*.exe",
+				"${fileDirname}\\*.ilk",
+				"${fileDirname}\\*.obj",
+				"${fileDirname}\\*.pdb"
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "빌드 클린"
 		}
 	]
 }
@@ -111,7 +181,7 @@ vscode+MSVC+SDL2 개발 환경설정 방법
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "cl.exe - Active 파일 디버그",
+            "name": "디버그를 위한 Active File 수행",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${fileDirname}\\SDL_mystudy_dbg.exe",
@@ -119,8 +189,20 @@ vscode+MSVC+SDL2 개발 환경설정 방법
             "stopAtEntry": true,
             "cwd": "${fileDirname}",
             "environment": [],
-            "console": "externalTerminal",
-            "preLaunchTask": "C/C++: 현재파일 디버그용 빌드"
+            "console": "internalConsole",
+            "preLaunchTask": "C/C++: 디버그용 빌드"
+        },
+        {
+            "name": "릴리즈를 위한 Active File 수행",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${fileDirname}\\SDL_mystudy_rls.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "console": "internalConsole",
+            "preLaunchTask": "C/C++: 릴리즈용 빌드"
         }
     ]
 }
