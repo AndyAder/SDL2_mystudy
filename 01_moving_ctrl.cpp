@@ -8,8 +8,8 @@
 // Renderer 에서 SDL_RENDERER_PRESENTVSYNC 가 세팅되어 있으면
 // fps 가 HW(모니터) 수직주파수(60Hz)와 동기화되므로...
 
-const int WINDOW_WIDTH = 640;
-const int WINDOW_HEIGHT = 480;
+const int WINDOW_WIDTH = 1024;
+const int WINDOW_HEIGHT = 768;
 
 static TTF_Font *font, *font_frame;
 int fcount = 0, fcount_per_sec = 0;
@@ -49,7 +49,8 @@ int main(int argc, char *argv[]) {
         SDL_Log("SDL Init Err %s", SDL_GetError());
         return 1;
     }
-    if(IMG_Init(IMG_INIT_PNG) != 0) {
+
+    if(!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
         SDL_Log("IMG Init Err %s", IMG_GetError());
         return 1;
     }
@@ -102,8 +103,8 @@ int main(int argc, char *argv[]) {
     bool running = true;
     SDL_Event event;
     const Uint8 *key_state;
-    SDL_Rect r1 = {WINDOW_WIDTH - w1, 240 - h1/2, w1, h1};
-    SDL_Rect r2 = {0, 240 - h2/2, w2, h2};
+    SDL_Rect r1 = {WINDOW_WIDTH - w1, WINDOW_HEIGHT/2 - h1/2, w1, h1};
+    SDL_Rect r2 = {0, WINDOW_HEIGHT/2 - h2/2, w2, h2};
     Uint32 tick = 0;
 
     while(running) {
