@@ -48,7 +48,9 @@ SDL_Renderer *AA_game_init(const char *title) {
     }
 
     SDL_Renderer *renderer = SDL_CreateRenderer(
-        AA_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE
+        AA_window, -1,
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE
+        | SDL_RENDERER_PRESENTVSYNC
     );
     if(!renderer) {
         SDL_Log("Create renderer Err %s", SDL_GetError());
@@ -76,11 +78,9 @@ void AA_game_quit() {
 struct AA_Texture {
     SDL_Texture *tex;
     SDL_Renderer *renderer;
-    SDL_FRect r;
     AA_Texture(SDL_Renderer *_r, SDL_Surface *_s) 
         : tex(SDL_CreateTextureFromSurface(_r, _s))
-        , renderer(_r)
-        , r{0.0f, 0.0f, (float)_s->w, (float)_s->h} {
+        , renderer(_r) {
             SDL_FreeSurface(_s);
     }
     ~AA_Texture() {
@@ -88,12 +88,13 @@ struct AA_Texture {
     }
 };
 
-AA_Texture *AA_load_texture(SDL_Renderer *renderer, const char *img_filename) {
+AA_Texture *AA_load_texture(SDL_Renderer *renderer, const char *img_filename, SDL_FRect &r) {
     SDL_Surface *sur = IMG_Load(img_filename);
     if(!sur) {
         SDL_Log("IMG_Load(%s) Err %s", img_filename, Mix_GetError());
         return NULL;
     }
+    r.w = sur->w, r.h = sur->h;
     AA_Texture *tex = new AA_Texture(renderer, sur);
     return tex;
 }
@@ -117,20 +118,21 @@ struct AA_Object { // 미완성... 수평, 수직이 아닌 경우에 대한 고
 
 struct { // class 명을 일부러 넣지 않음. 전역에 단 하나의 개체만 할당.
     AA_Texture *atex[2]; // magic number이긴 하지만.. 일단..
+    SDL_FRect r[2];
     void load(SDL_Renderer *renderer, const char *s1, const char *s2) { // 초기 설정시
-        atex[0] = AA_load_texture(renderer, s1);
-        atex[1] = AA_load_texture(renderer, s2);
-        atex[1]->r.x = atex[0]->r.w;
+        atex[0] = AA_load_texture(renderer, s1, r[0]);
+        atex[1] = AA_load_texture(renderer, s2, r[1]);
+        r[0].x = r[0].y = r[1].y = 0, r[1].x = r[0].w;
     }
     void blit() {  // while 구문 내
-        SDL_RenderCopyF(atex[0]->renderer, atex[0]->tex, NULL, &atex[0]->r);
-        SDL_RenderCopyF(atex[1]->renderer, atex[1]->tex, NULL, &atex[1]->r);
+        SDL_RenderCopyF(atex[0]->renderer, atex[0]->tex, NULL, &r[0]);
+        SDL_RenderCopyF(atex[1]->renderer, atex[1]->tex, NULL, &r[1]);
     }
     void move() { // while 구문 내
-        atex[0]->r.x -= 1.0f;
-        atex[1]->r.x -= 1.0f;
-        if(atex[0]->r.x == 0.0f) atex[1]->r.x = atex[0]->r.w; // ?
-        if(atex[1]->r.x == 0.0f) atex[0]->r.x = atex[1]->r.w; // ?
+        r[0].x -= 1.0f;
+        r[1].x -= 1.0f;
+        if(r[0].x == 0.0f) r[1].x = r[0].w; // ?
+        if(r[1].x == 0.0f) r[0].x = r[1].w; // ?
     }
     void free() { // 종료시
         AA_free_texture(atex[0]);
@@ -141,18 +143,19 @@ struct { // class 명을 일부러 넣지 않음. 전역에 단 하나의 개체
 const int AA_PLAYER_NUM_OF_IMG = 4;
 struct {
     AA_Texture *atex[AA_PLAYER_NUM_OF_IMG];
+    SDL_FRect r;
     int fnum;
     void load(SDL_Renderer *renderer, const char *s) {
         char buff[101];
         for(int i=0; i<AA_PLAYER_NUM_OF_IMG; i++) {
             sprintf(buff, "%s%d.png", s, i+1);
-            atex[i] = AA_load_texture(renderer, buff);
+            atex[i] = AA_load_texture(renderer, buff, r);
         }
         fnum = 0;
+        r.x = 10.0f, r.y = (float)(WINDOW_HEIGHT / 2);
     }
-    void blit(float x, float y) {
-        atex[fnum]->r.x = x, atex[fnum]->r.y = y;
-        SDL_RenderCopyF(atex[fnum]->renderer, atex[fnum]->tex, NULL, &atex[fnum]->r);
+    void blit() {
+        SDL_RenderCopyF(atex[fnum]->renderer, atex[fnum]->tex, NULL, &r);
         if(++fnum == AA_PLAYER_NUM_OF_IMG) {
             fnum = 0;
         }
@@ -162,7 +165,6 @@ struct {
             AA_free_texture(atex[i]);
         }
     }
-
 } AA_Player[2]; // 2인용을 고려하여
 
 //---------------------------------------
@@ -188,6 +190,8 @@ int main(int argc, char** argv) {
     bool running = true;
     SDL_Event event;
     const Uint8 *key_state;
+    int dx, dy;
+    int frame = 0;
 
     while(running) {
         SDL_PollEvent(&event);
@@ -201,14 +205,36 @@ int main(int argc, char** argv) {
             running = false;
             break;
         }
+        dx = dy = 0;
+        if(key_state[SDL_SCANCODE_UP]) dy-=5;
+        if(key_state[SDL_SCANCODE_DOWN]) dy+=5;
+        if(key_state[SDL_SCANCODE_LEFT]) dx-=5;
+        if(key_state[SDL_SCANCODE_RIGHT]) dx+=5;
+        if(dx && dy) {
+            AA_Player[0].r.x += (float)(dx * 0.707f);
+            AA_Player[0].r.y += (float)(dy * 0.707f);
+        }
+        else {
+            AA_Player[0].r.x += (float)dx;
+            AA_Player[0].r.y += (float)dy;
+        }
+        if(AA_Player[0].r.x < 0.0f) AA_Player[0].r.x = 0.0f;
+        if(AA_Player[0].r.x > (float)WINDOW_WIDTH - AA_Player[0].r.w)
+            AA_Player[0].r.x = (float)WINDOW_WIDTH - AA_Player[0].r.w;
+        if(AA_Player[0].r.y < 0.0f) AA_Player[0].r.y = 0.0f;
+        if(AA_Player[0].r.y > (float)WINDOW_HEIGHT - AA_Player[0].r.h)
+            AA_Player[0].r.y = (float)WINDOW_HEIGHT - AA_Player[0].r.h;
 
-
+        if(key_state[SDL_SCANCODE_A]) {
+            // 총알 생성로직 (frame으로 오토샷 주기 설정)
+        }
 
         AA_Background.blit();
-        AA_Player[0].blit(500.0f, 500.0f);
+        AA_Player[0].blit();
 
         SDL_RenderPresent(AA_renderer);
         AA_Background.move();
+        ++frame;
     }
 
     // Game Quit
