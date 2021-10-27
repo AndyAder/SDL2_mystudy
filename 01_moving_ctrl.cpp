@@ -105,6 +105,7 @@ int main(int argc, char *argv[]) {
     const Uint8 *key_state;
     SDL_Rect r1 = {WINDOW_WIDTH - w1, WINDOW_HEIGHT/2 - h1/2, w1, h1};
     SDL_Rect r2 = {0, WINDOW_HEIGHT/2 - h2/2, w2, h2};
+    int angle = 0;
     Uint32 tick = 0;
 
     while(running) {
@@ -151,6 +152,8 @@ int main(int argc, char *argv[]) {
             r2.y -= 5;
             if(r2.y < 0) r2.y = 0;
         }
+        angle += 6;
+        if(angle >= 360) angle -= 360;
 
     	if(SDL_TICKS_PASSED(SDL_GetTicks(), tick + 1000)) {
             int delta = SDL_GetTicks() - tick;
@@ -162,8 +165,8 @@ int main(int argc, char *argv[]) {
 
         SDL_SetRenderDrawColor(renderer, 64, 64, 64, SDL_ALPHA_OPAQUE);
         SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, texture1, NULL, &r1);
-        SDL_RenderCopy(renderer, texture2, NULL, &r2);
+        SDL_RenderCopyEx(renderer, texture1, NULL, &r1, (double)angle, NULL, SDL_FLIP_NONE);
+        SDL_RenderCopyEx(renderer, texture2, NULL, &r2, (double)angle, NULL, SDL_FLIP_NONE);
 
         render_cnt(renderer);
         if(fps_tex) SDL_RenderCopy(renderer, fps_tex, NULL, &fps_rect);
