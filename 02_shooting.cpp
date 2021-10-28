@@ -4,6 +4,8 @@
 #include <SDL_mixer.h>
 
 #include <cstdio> // for sprintf
+#include <cstdlib> // rand
+#include <ctime>
 
 //---------------------------------------
 // Init function
@@ -78,9 +80,10 @@ void AA_game_quit() {
 struct AA_Texture {
     SDL_Texture *tex;
     SDL_Renderer *renderer;
+    int w, h;
     AA_Texture(SDL_Renderer *_r, SDL_Surface *_s) 
         : tex(SDL_CreateTextureFromSurface(_r, _s))
-        , renderer(_r) {
+        , renderer(_r), w(_s->w), h(_s->h) {
             SDL_FreeSurface(_s);
     }
     ~AA_Texture() {
@@ -88,13 +91,13 @@ struct AA_Texture {
     }
 };
 
-AA_Texture *AA_load_texture(SDL_Renderer *renderer, const char *img_filename, SDL_FRect &r) {
+AA_Texture *AA_load_texture(SDL_Renderer *renderer, const char *img_filename, SDL_FRect *r = NULL) {
     SDL_Surface *sur = IMG_Load(img_filename);
     if(!sur) {
         SDL_Log("IMG_Load(%s) Err %s", img_filename, Mix_GetError());
         return NULL;
     }
-    r.w = sur->w, r.h = sur->h;
+    if(r) r->w = sur->w, r->h = sur->h;
     AA_Texture *tex = new AA_Texture(renderer, sur);
     return tex;
 }
@@ -108,7 +111,7 @@ void AA_free_texture(AA_Texture *t) {
 // Object 및 Background 구조
 //---------------------------------------
 
-struct AA_Object { // 미완성... 수평, 수직이 아닌 경우에 대한 고려가 필요
+struct _AA_Object { // 미완성... 수평, 수직이 아닌 경우에 대한 고려가 필요
     AA_Texture *tex;
     bool valid;
     SDL_Rect org_r, edge_r;
@@ -120,8 +123,8 @@ struct { // class 명을 일부러 넣지 않음. 전역에 단 하나의 개체
     AA_Texture *atex[2]; // magic number이긴 하지만.. 일단..
     SDL_FRect r[2];
     void load(SDL_Renderer *renderer, const char *s1, const char *s2) { // 초기 설정시
-        atex[0] = AA_load_texture(renderer, s1, r[0]);
-        atex[1] = AA_load_texture(renderer, s2, r[1]);
+        atex[0] = AA_load_texture(renderer, s1, &r[0]);
+        atex[1] = AA_load_texture(renderer, s2, &r[1]);
         r[0].x = r[0].y = r[1].y = 0, r[1].x = r[0].w;
     }
     void blit() {  // while 구문 내
@@ -141,7 +144,7 @@ struct { // class 명을 일부러 넣지 않음. 전역에 단 하나의 개체
 } AA_Background;
 
 const int AA_PLAYER_NUM_OF_IMG = 4;
-struct {
+struct AA_Player_t {
     AA_Texture *atex[AA_PLAYER_NUM_OF_IMG];
     SDL_FRect r;
     int fnum;
@@ -149,7 +152,7 @@ struct {
         char buff[101];
         for(int i=0; i<AA_PLAYER_NUM_OF_IMG; i++) {
             sprintf(buff, "%s%d.png", s, i+1);
-            atex[i] = AA_load_texture(renderer, buff, r);
+            atex[i] = AA_load_texture(renderer, buff, &r);
         }
         fnum = 0;
         r.x = 10.0f, r.y = (float)(WINDOW_HEIGHT / 2);
@@ -167,6 +170,37 @@ struct {
     }
 } AA_Player[2]; // 2인용을 고려하여
 
+const int AA_CAP_OF_OBJ = 1000;
+struct AA_Object_t {
+    static int pindex;
+    bool activated;
+    AA_Texture *atex;
+    SDL_FRect r;
+    float dx, dy;
+
+    static int curr_index();
+    void load(AA_Texture *t, float mag_rate = 1.0f) {
+        activated = true;
+        atex = t;
+        r.h = t->h * mag_rate, r.w = t->w * mag_rate;
+        //atex = AA_load_texture(renderer, s, r);
+    }
+    void blit() {
+        SDL_RenderCopyF(atex->renderer, atex->tex, NULL, &r);
+        r.x += dx, r.y += dy;
+    }
+    void free() {
+        activated = false;
+        atex = NULL;
+    }
+    AA_Object_t() : activated(false), atex(NULL), dx(0.0f), dy(0.0f) {}
+} AA_Object[AA_CAP_OF_OBJ]; // 최대 1000개.
+int AA_Object_t::pindex = 0;
+int AA_Object_t::curr_index() {
+        if(AA_Object_t::pindex == AA_CAP_OF_OBJ) AA_Object_t::pindex = 0;
+        return AA_Object_t::pindex++;
+}
+
 //---------------------------------------
 // main
 //---------------------------------------
@@ -182,10 +216,13 @@ struct {
 int main(int argc, char** argv) {
     // Game Init
     if(!(AA_renderer = AA_game_init("AndyAder Test Window"))) return 1;
+    srand(time(NULL));
 
     // Loading Texture & Ready to run
     AA_Background.load(AA_renderer, "img/jeanes/Farback01.png", "img/jeanes/Farback02.png");
     AA_Player[0].load(AA_renderer, "img/jeanes/Ship0");
+    AA_Texture *asteroid = AA_load_texture(AA_renderer, "img/jeanes/Asteroid.png");
+    AA_Texture *weapon_normal = AA_load_texture(AA_renderer, "img/wenrexa/02.png");
 
     bool running = true;
     SDL_Event event;
@@ -227,10 +264,40 @@ int main(int argc, char** argv) {
 
         if(key_state[SDL_SCANCODE_A]) {
             // 총알 생성로직 (frame으로 오토샷 주기 설정)
+            // 총일 인스턴스 공간 확보한 후, 생성한 총알 텍스쳐를 가공하여 인스턴스 완성
+            // 오토샷 관련 변수 및 로직 제작. (else 구문 포함)
         }
 
+        // 배경 그리기
         AA_Background.blit();
+
+        // 운석 생성 및 그리기
+        if(frame % 30 == 29) { // 0.5초마다 운석 생성
+            int idx = AA_Object_t::curr_index();
+            AA_Object[idx].load(asteroid, 0.5f);
+            AA_Object[idx].r.x = (float)WINDOW_WIDTH;
+            AA_Object[idx].r.y = (float)(rand() % (WINDOW_HEIGHT - (int)AA_Object[idx].r.h));
+            AA_Object[idx].dx = -(float)(rand() % 5 + 3);
+        }
+        for(int i=0; i<AA_CAP_OF_OBJ; i++) {
+            if(AA_Object[i].activated) {
+                AA_Object[i].blit();
+                if(AA_Object[i].r.x < -AA_Object[i].r.w) AA_Object[i].free();
+            }
+        }
+
+        // 플레이어 탄환 그리기
+        // 운석 그리기와 비슷한 방법으로 구현한다.
+
+
+        // 플레이어 기체 그리기
         AA_Player[0].blit();
+
+        // 충돌 판정 (플레이어 기체와 운석)
+        // 1. 먼저 폭발 애니메이션 텍스쳐 생성 및 폭발 오브젝트 클래스 및 인스턴스 공간 생성
+        // 2. 거리판정할지 사각판정할지 선택 (텍스쳐 굴곡 판정은 어려우므로 패스)
+        // 3. 충돌 판정 및 폭발 로직 이곳에 코딩
+
 
         SDL_RenderPresent(AA_renderer);
         AA_Background.move();
@@ -238,7 +305,8 @@ int main(int argc, char** argv) {
     }
 
     // Game Quit
-
+    AA_free_texture(asteroid);
+    AA_free_texture(weapon_normal);
     AA_Player[0].free();
     AA_Background.free();
     AA_game_quit();
