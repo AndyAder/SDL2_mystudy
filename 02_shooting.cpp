@@ -151,6 +151,7 @@ const int AA_PLAYER_NUM_OF_IMG = 4;
 struct AA_Player_t {
     AA_Texture *atex[AA_PLAYER_NUM_OF_IMG];
     SDL_FRect r;
+    float cx, cy; // 중심 좌표
     int fnum;
     int load(SDL_Renderer *renderer, const char *s) {
         char buff[101];
@@ -161,6 +162,7 @@ struct AA_Player_t {
         }
         fnum = 0;
         r.x = 10.0f, r.y = (float)(WINDOW_HEIGHT / 2);
+        cx = r.x + r.w/2, cy = r.y + r.h/2;
         return 0;
     }
     void blit() {
@@ -184,6 +186,7 @@ struct AA_Object_t {
     AA_Texture *atex;
     SDL_FRect r;
     float dx, dy;
+    int hp;
 
     static int curr_index();
     void load(AA_Texture *t, float mag_rate = 1.0f) {
@@ -200,12 +203,12 @@ struct AA_Object_t {
         activated = false;
         atex = NULL;
     }
-    AA_Object_t() : activated(false), atex(NULL), dx(0.0f), dy(0.0f) {}
+    AA_Object_t() : activated(false), atex(NULL), dx(0.0f), dy(0.0f), hp(0) {}
 } AA_Object[AA_CAP_OF_OBJ]; // 최대 1000개.
 int AA_Object_t::pindex = 0;
 int AA_Object_t::curr_index() {
-        if(AA_Object_t::pindex == AA_CAP_OF_OBJ) AA_Object_t::pindex = 0;
-        return AA_Object_t::pindex++;
+    if(AA_Object_t::pindex == AA_CAP_OF_OBJ) AA_Object_t::pindex = 0;
+    return AA_Object_t::pindex++;
 }
 
 // 플레이어 탄환
@@ -248,10 +251,46 @@ struct AA_Bullet_t {
 } AA_Bullet[AA_CAP_OF_BULLET]; 
 int AA_Bullet_t::pindex = 0;
 int AA_Bullet_t::curr_index() {
-        if(AA_Bullet_t::pindex == AA_CAP_OF_BULLET) AA_Bullet_t::pindex = 0;
-        return AA_Bullet_t::pindex++;
+    if(AA_Bullet_t::pindex == AA_CAP_OF_BULLET) AA_Bullet_t::pindex = 0;
+    return AA_Bullet_t::pindex++;
 }
 
+// 폭발애니메이션
+const int AA_CAP_OF_EXPLOSION = 200;
+struct AA_Explosion_t {
+    static int pindex; // 들어갈 번지수
+    bool activated;
+    AA_Texture *atex;
+    SDL_Rect src_r; // 64x64 이미지가 가로 10, 세로 11 개 존재, raster 순.
+    SDL_FRect r;
+    int findex; // 0~109
+    int fskip;
+
+    static int curr_index();
+
+    void load(AA_Texture *t, float x, float y, float mag_rate = 1.0f, int fs = 1) {
+        activated = true;
+        atex = t;
+        src_r = {0, 0, 64, 64};
+        findex = 0, fskip = fs;
+        r.h = t->h * mag_rate, r.w = t->w * mag_rate;
+    }
+    void blit() {
+        src_r.x = findex / 64 % 10, src_r.y = findex / 640;
+        SDL_RenderCopyF(atex->renderer, atex->tex, &src_r, &r);
+        if((findex += fskip) >= 110) free();
+    }
+    void free() {
+        activated = false;
+        atex = NULL;
+    }
+    AA_Explosion_t() : activated(false), atex(NULL) {}
+} AA_Explosion[AA_CAP_OF_EXPLOSION];
+int AA_Explosion_t::pindex = 0;
+int AA_Explosion_t::curr_index() {
+    if(AA_Explosion_t::pindex == AA_CAP_OF_EXPLOSION) AA_Explosion_t::pindex = 0;
+    return AA_Explosion_t::pindex++;
+}
 
 
 //---------------------------------------
@@ -278,17 +317,19 @@ int main(int argc, char** argv) {
         || AA_Player[0].load(AA_renderer, "img/jeanes/Ship0"))
         running = false;
     AA_Texture *asteroid = AA_load_texture(AA_renderer, "img/jeanes/Asteroid.png");
+//    AA_Texture *asteroid = AA_load_texture(AA_renderer, "img/wenrexa/01.png");
     AA_Texture *weapon_normal = AA_load_texture(AA_renderer, "img/wenrexa/02.png");
-    if(!asteroid || !weapon_normal) running = false;
+    AA_Texture *explosion_anim = AA_load_texture(AA_renderer, "img/explosion_set.png");
+    if(!asteroid || !weapon_normal || !explosion_anim) running = false;
 
     SDL_Event event;
     const Uint8 *key_state;
     int dx, dy;
     int frame = 0, b_frame = 0;
-    Uint32 start_tick[1200], end_tick[1200]; // DEBUG
+    // Uint32 start_tick[1200], end_tick[1200]; // DEBUG
 
     while(running) {
-        start_tick[frame] = SDL_GetTicks();
+        // start_tick[frame] = SDL_GetTicks();
         SDL_PollEvent(&event);
         if(event.type == SDL_QUIT) {  // 종료버튼 클릭
             running = false;
@@ -325,6 +366,8 @@ int main(int argc, char** argv) {
             AA_Player[0].r.y = 0.0f;
         if(AA_Player[0].r.y > (float)WINDOW_HEIGHT - AA_Player[0].r.h)
             AA_Player[0].r.y = (float)WINDOW_HEIGHT - AA_Player[0].r.h;
+        AA_Player[0].cx = AA_Player[0].r.x + AA_Player[0].r.w/2;
+        AA_Player[0].cy = AA_Player[0].r.y + AA_Player[0].r.h/2;
 
         if(key_state[SDL_SCANCODE_A]) {
             if(b_frame % 40 == 0) {
@@ -370,13 +413,16 @@ int main(int argc, char** argv) {
         // 플레이어 기체 그리기
         AA_Player[0].blit();
 
-        // 충돌 판정 (플레이어 기체와 운석)
+        // 충돌 판정 (플레이어 기체와 적 오브젝트)
         // 1. 먼저 폭발 애니메이션 텍스쳐 생성 및 폭발 오브젝트 클래스 및 인스턴스 공간 생성
         // 2. 거리판정할지 사각판정할지 선택 (텍스쳐 굴곡 판정은 어려우므로 패스)
         // 3. 충돌 판정 및 폭발 로직 이곳에 코딩
 
+        // 충돌 판정 (플레이어 탄환과 적 오브젝트)
+        
 
-        end_tick[frame] = SDL_GetTicks();
+
+        // end_tick[frame] = SDL_GetTicks();
         SDL_RenderPresent(AA_renderer);
         AA_Background.move();
         ++frame, ++b_frame;
@@ -385,12 +431,13 @@ int main(int argc, char** argv) {
     // Game Quit
     AA_free_texture(asteroid);
     AA_free_texture(weapon_normal);
+    AA_free_texture(explosion_anim);
     AA_Player[0].free();
     AA_Background.free();
     AA_game_quit();
 
-    for(int i=0; i<frame; i++) {
-        printf("%d : [%u] ~ [%u]\n", i, start_tick[i], end_tick[i]);
-    }
+    // for(int i=0; i<frame; i++) {
+    //     printf("%d : [%u] ~ [%u]\n", i, start_tick[i], end_tick[i]);
+    // }
     return 0;
 }
