@@ -94,7 +94,7 @@ struct AA_Texture {
 AA_Texture *AA_load_texture(SDL_Renderer *renderer, const char *img_filename, SDL_FRect *r = NULL) {
     SDL_Surface *sur = IMG_Load(img_filename);
     if(!sur) {
-        SDL_Log("IMG_Load(%s) Err %s", img_filename, Mix_GetError());
+        SDL_Log("IMG_Load(%s) Err %s", img_filename, IMG_GetError());
         return NULL;
     }
     if(r) r->w = sur->w, r->h = sur->h;
@@ -119,13 +119,16 @@ struct _AA_Object { // 미완성... 수평, 수직이 아닌 경우에 대한 �
     int cx, cy;
 };
 
-struct { // class 명을 일부러 넣지 않음. 전역에 단 하나의 개체만 할당.
+// 배경
+struct AA_Background_t {
     AA_Texture *atex[2]; // magic number이긴 하지만.. 일단..
     SDL_FRect r[2];
-    void load(SDL_Renderer *renderer, const char *s1, const char *s2) { // 초기 설정시
+    int load(SDL_Renderer *renderer, const char *s1, const char *s2) { // 초기 설정시
         atex[0] = AA_load_texture(renderer, s1, &r[0]);
         atex[1] = AA_load_texture(renderer, s2, &r[1]);
+        if(!atex[0] || !atex[1]) return 1;
         r[0].x = r[0].y = r[1].y = 0, r[1].x = r[0].w;
+        return 0;
     }
     void blit() {  // while 구문 내
         SDL_RenderCopyF(atex[0]->renderer, atex[0]->tex, NULL, &r[0]);
@@ -143,19 +146,22 @@ struct { // class 명을 일부러 넣지 않음. 전역에 단 하나의 개체
     }
 } AA_Background;
 
+// 플레이어 기체
 const int AA_PLAYER_NUM_OF_IMG = 4;
 struct AA_Player_t {
     AA_Texture *atex[AA_PLAYER_NUM_OF_IMG];
     SDL_FRect r;
     int fnum;
-    void load(SDL_Renderer *renderer, const char *s) {
+    int load(SDL_Renderer *renderer, const char *s) {
         char buff[101];
         for(int i=0; i<AA_PLAYER_NUM_OF_IMG; i++) {
             sprintf(buff, "%s%d.png", s, i+1);
             atex[i] = AA_load_texture(renderer, buff, &r);
+            if(!atex[i]) return 1;
         }
         fnum = 0;
         r.x = 10.0f, r.y = (float)(WINDOW_HEIGHT / 2);
+        return 0;
     }
     void blit() {
         SDL_RenderCopyF(atex[fnum]->renderer, atex[fnum]->tex, NULL, &r);
@@ -170,9 +176,10 @@ struct AA_Player_t {
     }
 } AA_Player[2]; // 2인용을 고려하여
 
+// 적 기체, 장애물 등
 const int AA_CAP_OF_OBJ = 1000;
 struct AA_Object_t {
-    static int pindex;
+    static int pindex; // 들어갈 번지수
     bool activated;
     AA_Texture *atex;
     SDL_FRect r;
@@ -201,6 +208,52 @@ int AA_Object_t::curr_index() {
         return AA_Object_t::pindex++;
 }
 
+// 플레이어 탄환
+const int AA_CAP_OF_BULLET = 500;
+struct AA_Bullet_t {
+    static int pindex; // 들어갈 번지수
+    bool activated;
+    AA_Texture *atex;
+    SDL_Rect src_r;
+    SDL_FRect r;
+    float dx, dy;
+
+    static int curr_index();
+    void load(AA_Texture *t, float mag_rate = 1.0f, SDL_Rect *s = NULL) {
+        activated = true;
+        atex = t;
+        if(!s) {
+            src_r = {0, 0, 0, 0};
+            r.h = t->h * mag_rate, r.w = t->w * mag_rate;
+        }
+        else {
+            src_r = *s;
+            r.h = s->h * mag_rate, r.w = s->w * mag_rate;
+        }
+    }
+    void blit() {
+        if(src_r.w == 0) {
+            SDL_RenderCopyF(atex->renderer, atex->tex, NULL, &r);
+        }
+        else {
+            SDL_RenderCopyF(atex->renderer, atex->tex, &src_r, &r);
+        }
+        r.x += dx, r.y += dy;
+    }
+    void free() {
+        activated = false;
+        atex = NULL;
+    }
+    AA_Bullet_t() : activated(false), atex(NULL), dx(0.0f), dy(0.0f) {}
+} AA_Bullet[AA_CAP_OF_BULLET]; 
+int AA_Bullet_t::pindex = 0;
+int AA_Bullet_t::curr_index() {
+        if(AA_Bullet_t::pindex == AA_CAP_OF_BULLET) AA_Bullet_t::pindex = 0;
+        return AA_Bullet_t::pindex++;
+}
+
+
+
 //---------------------------------------
 // main
 //---------------------------------------
@@ -218,19 +271,24 @@ int main(int argc, char** argv) {
     if(!(AA_renderer = AA_game_init("AndyAder Test Window"))) return 1;
     srand(time(NULL));
 
+    bool running = true;
+
     // Loading Texture & Ready to run
-    AA_Background.load(AA_renderer, "img/jeanes/Farback01.png", "img/jeanes/Farback02.png");
-    AA_Player[0].load(AA_renderer, "img/jeanes/Ship0");
+    if(AA_Background.load(AA_renderer, "img/jeanes/Farback01.png", "img/jeanes/Farback02.png")
+        || AA_Player[0].load(AA_renderer, "img/jeanes/Ship0"))
+        running = false;
     AA_Texture *asteroid = AA_load_texture(AA_renderer, "img/jeanes/Asteroid.png");
     AA_Texture *weapon_normal = AA_load_texture(AA_renderer, "img/wenrexa/02.png");
+    if(!asteroid || !weapon_normal) running = false;
 
-    bool running = true;
     SDL_Event event;
     const Uint8 *key_state;
     int dx, dy;
-    int frame = 0;
+    int frame = 0, b_frame = 0;
+    Uint32 start_tick[1200], end_tick[1200]; // DEBUG
 
     while(running) {
+        start_tick[frame] = SDL_GetTicks();
         SDL_PollEvent(&event);
         if(event.type == SDL_QUIT) {  // 종료버튼 클릭
             running = false;
@@ -238,10 +296,14 @@ int main(int argc, char** argv) {
         }
         // Key Down 상태
         key_state = SDL_GetKeyboardState(NULL);
+
+        // ESC 누를 시 종료
         if(key_state[SDL_SCANCODE_ESCAPE]) {
             running = false;
             break;
         }
+
+
         dx = dy = 0;
         if(key_state[SDL_SCANCODE_UP]) dy-=5;
         if(key_state[SDL_SCANCODE_DOWN]) dy+=5;
@@ -255,17 +317,27 @@ int main(int argc, char** argv) {
             AA_Player[0].r.x += (float)dx;
             AA_Player[0].r.y += (float)dy;
         }
-        if(AA_Player[0].r.x < 0.0f) AA_Player[0].r.x = 0.0f;
+        if(AA_Player[0].r.x < 0.0f)
+            AA_Player[0].r.x = 0.0f;
         if(AA_Player[0].r.x > (float)WINDOW_WIDTH - AA_Player[0].r.w)
             AA_Player[0].r.x = (float)WINDOW_WIDTH - AA_Player[0].r.w;
-        if(AA_Player[0].r.y < 0.0f) AA_Player[0].r.y = 0.0f;
+        if(AA_Player[0].r.y < 0.0f) 
+            AA_Player[0].r.y = 0.0f;
         if(AA_Player[0].r.y > (float)WINDOW_HEIGHT - AA_Player[0].r.h)
             AA_Player[0].r.y = (float)WINDOW_HEIGHT - AA_Player[0].r.h;
 
         if(key_state[SDL_SCANCODE_A]) {
-            // 총알 생성로직 (frame으로 오토샷 주기 설정)
-            // 총일 인스턴스 공간 확보한 후, 생성한 총알 텍스쳐를 가공하여 인스턴스 완성
-            // 오토샷 관련 변수 및 로직 제작. (else 구문 포함)
+            if(b_frame % 40 == 0) {
+                int idx = AA_Bullet_t::curr_index();
+                AA_Bullet[idx].load(weapon_normal, 0.5f, &SDL_Rect({39, 45, 45, 33}));
+                //AA_Bullet[idx].load(weapon_normal, 1.0f);
+                AA_Bullet[idx].r.x = AA_Player[0].r.x + AA_Player[0].r.w;
+                AA_Bullet[idx].r.y = AA_Player[0].r.y + (AA_Player[0].r.h - AA_Bullet[idx].r.h)/2.0f;
+                AA_Bullet[idx].dx = 10.0f;
+            }
+        }
+        else {
+            b_frame = -1;
         }
 
         // 배경 그리기
@@ -276,7 +348,7 @@ int main(int argc, char** argv) {
             int idx = AA_Object_t::curr_index();
             AA_Object[idx].load(asteroid, 0.5f);
             AA_Object[idx].r.x = (float)WINDOW_WIDTH;
-            AA_Object[idx].r.y = (float)(rand() % (WINDOW_HEIGHT - (int)AA_Object[idx].r.h));
+            AA_Object[idx].r.y = (float)rand() * (WINDOW_HEIGHT - AA_Object[idx].r.h) / RAND_MAX;
             AA_Object[idx].dx = -(float)(rand() % 5 + 3);
         }
         for(int i=0; i<AA_CAP_OF_OBJ; i++) {
@@ -288,7 +360,12 @@ int main(int argc, char** argv) {
 
         // 플레이어 탄환 그리기
         // 운석 그리기와 비슷한 방법으로 구현한다.
-
+        for(int i=0; i<AA_CAP_OF_BULLET; i++) {
+            if(AA_Bullet[i].activated) {
+                AA_Bullet[i].blit();
+                if(AA_Bullet[i].r.x > (float)WINDOW_WIDTH) AA_Bullet[i].free();
+            }
+        }
 
         // 플레이어 기체 그리기
         AA_Player[0].blit();
@@ -299,9 +376,10 @@ int main(int argc, char** argv) {
         // 3. 충돌 판정 및 폭발 로직 이곳에 코딩
 
 
+        end_tick[frame] = SDL_GetTicks();
         SDL_RenderPresent(AA_renderer);
         AA_Background.move();
-        ++frame;
+        ++frame, ++b_frame;
     }
 
     // Game Quit
@@ -310,5 +388,9 @@ int main(int argc, char** argv) {
     AA_Player[0].free();
     AA_Background.free();
     AA_game_quit();
+
+    for(int i=0; i<frame; i++) {
+        printf("%d : [%u] ~ [%u]\n", i, start_tick[i], end_tick[i]);
+    }
     return 0;
 }
