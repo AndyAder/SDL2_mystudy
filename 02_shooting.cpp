@@ -107,6 +107,18 @@ AA_Texture *AA_load_texture(SDL_Renderer *renderer, const char *img_filename, SD
     return tex;
 }
 
+AA_Texture *AA_load_ttf_texture(SDL_Renderer *renderer, TTF_Font *font,
+                                const char *text, SDL_Color *color, SDL_FRect *r = NULL) {
+    SDL_Surface *sur = TTF_RenderUTF8_Blended(font, text, *color);
+    if(!sur) {
+        SDL_Log("TTF_Render Err %s", TTF_GetError());
+        return NULL;
+    }
+    if(r) r->w = sur->w, r->h = sur->h;
+    AA_Texture *tex = new AA_Texture(renderer, sur);
+    return tex;
+}
+
 void AA_free_texture(AA_Texture *t) {
     delete t;
     t = NULL;
@@ -352,7 +364,7 @@ int main(int argc, char** argv) {
     AA_Texture *explosion_anim = AA_load_texture(AA_renderer, "img/explosion_set.png");
     if(!asteroid || !weapon_normal || !explosion_anim) running = false;
 
-    // font texture : 추후 AA_load_ttf_texture 로 만들 예정.
+    // Text Texture
     TTF_Font *font = TTF_OpenFont("C:\\Windows\\Fonts\\MALGUN.TTF", 20);
     if(!font) {
         SDL_Log("Open font Err %s", TTF_GetError());
@@ -361,14 +373,10 @@ int main(int argc, char** argv) {
     SDL_Color fgcolor = {255, 255, 0}, bgcolor = {0, 0, 0};
     char str_score[20];
     sprintf(str_score, "HITS : %d", score);
-    SDL_Surface *sur = TTF_RenderUTF8_Blended(font, str_score, fgcolor);
-    SDL_Rect score_rectf = {10, 10, sur->w, sur->h};
-    SDL_Texture *score_texf = SDL_CreateTextureFromSurface(AA_renderer, sur);
-    SDL_FreeSurface(sur);
-    sur = TTF_RenderUTF8_Blended(font, str_score, bgcolor);
-    SDL_Rect score_rectb = {12, 12, sur->w, sur->h};
-    SDL_Texture *score_texb = SDL_CreateTextureFromSurface(AA_renderer, sur);
-    SDL_FreeSurface(sur);
+    AA_Texture *score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &fgcolor);
+    SDL_FRect score_rectf = {10.0f, 10.0f, (float)score_f->w, (float)score_f->h};
+    AA_Texture *score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &bgcolor);
+    SDL_FRect score_rectb = {12.0f, 12.0f, (float)score_b->w, (float)score_b->h};
 
     // Mixer Test : 추후 AA 함수로 만들 예정
     Mix_Chunk *snd_fire = Mix_LoadWAV("sound/215423__taira-komori__pyo-1.mp3");
@@ -495,14 +503,10 @@ int main(int argc, char** argv) {
                             AA_Object[j].free();
 
                             sprintf(str_score, "HITS : %d", ++score);
-                            sur = TTF_RenderUTF8_Blended(font, str_score, fgcolor);
-                            SDL_DestroyTexture(score_texf);
-                            score_texf = SDL_CreateTextureFromSurface(AA_renderer, sur);
-                            SDL_FreeSurface(sur);
-                            sur = TTF_RenderUTF8_Blended(font, str_score, bgcolor);
-                            SDL_DestroyTexture(score_texb);
-                            score_texb = SDL_CreateTextureFromSurface(AA_renderer, sur);
-                            SDL_FreeSurface(sur);
+                            AA_free_texture(score_f);
+                            AA_free_texture(score_b);
+                            score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &fgcolor);
+                            score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &bgcolor);
                         }
                     }
                 }
@@ -536,8 +540,8 @@ int main(int argc, char** argv) {
         AA_Player[0].blit();
 
         // Score 표시
-        SDL_RenderCopy(AA_renderer, score_texb, NULL, &score_rectb);
-        SDL_RenderCopy(AA_renderer, score_texf, NULL, &score_rectf);
+        SDL_RenderCopyF(AA_renderer, score_b->tex, NULL, &score_rectb);
+        SDL_RenderCopyF(AA_renderer, score_f->tex, NULL, &score_rectf);
 
         // end_tick[frame] = SDL_GetTicks();
         SDL_RenderPresent(AA_renderer);
@@ -550,6 +554,8 @@ QUIT:
     AA_free_texture(asteroid);
     AA_free_texture(weapon_normal);
     AA_free_texture(explosion_anim);
+    AA_free_texture(score_f);
+    AA_free_texture(score_b);
     Mix_FreeChunk(snd_fire);
     Mix_FreeChunk(snd_boom);
     AA_Player[0].free();
