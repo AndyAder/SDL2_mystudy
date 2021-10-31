@@ -347,6 +347,13 @@ int score = 0;
 //        (따라서 fps가 느리면 느리게 이동, 빠르면 빠르게 이동하는 불합리한 점이 ㅡㅡ;;)
 //        추후에는 속도를 frame rate 기준이 아닌 System Time Tick 을 기준으로 맞추어야
 //        하므로, 이를 반영할 것을 고려하여 프로그래밍 해야 함.
+enum AA_Game_State {
+    AA_STATE_UNDEFINED = 0,
+    AA_STATE_READY = 1,
+    AA_STATE_INGAME = 2,
+    AA_STATE_GAMEOVER = 3
+};
+
 int main(int argc, char** argv) {
     // Game Init
     if(!(AA_renderer = AA_game_init("AndyAder Test Window"))) return 1;
@@ -396,6 +403,7 @@ int main(int argc, char** argv) {
     const Uint8 *key_state;
     int dx, dy;
     int frame = 0, b_frame = 0;
+    int game_state = AA_STATE_READY;
     // Uint32 start_tick[1200], end_tick[1200]; // DEBUG
 
     while(running) {
