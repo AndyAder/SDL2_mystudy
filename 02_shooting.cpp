@@ -465,8 +465,6 @@ int main(int argc, char** argv) {
                 (float)WINDOW_WIDTH,
                 (float)rand() * (WINDOW_HEIGHT - asteroid->h*0.5f) / RAND_MAX,
                 0.5f);
-            //AA_Object[idx].r.x = (float)WINDOW_WIDTH;
-            //AA_Object[idx].r.y = (float)rand() * (WINDOW_HEIGHT - AA_Object[idx].r.h) / RAND_MAX;
             AA_Object[idx].dx = -(float)(rand() % 5 + 3);
         }
 
@@ -507,6 +505,10 @@ int main(int argc, char** argv) {
                             AA_free_texture(score_b);
                             score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &fgcolor);
                             score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &bgcolor);
+
+                            // 탄환이 두개의 적 오브젝트에 동시에 맞았을 경우 생기는 
+                            // 널 포인터 오류를 방지하기 위하여 반드시 break 를 해아 한다.
+                            break;
                         }
                     }
                 }
