@@ -355,13 +355,17 @@ enum AA_Game_State {
 };
 
 int main(int argc, char** argv) {
+    /////////////////
     // Game Init
+    /////////////////
     if(!(AA_renderer = AA_game_init("AndyAder Test Window"))) return 1;
     srand(time(NULL));
 
     bool running = true;
 
+    /////////////////
     // Loading Texture, Sound & Ready to run
+    /////////////////
     if(AA_Background.load(AA_renderer, "img/jeanes/Farback01.png", "img/jeanes/Farback02.png")
         || AA_Player[0].load(AA_renderer, 10.0f, (float)(WINDOW_HEIGHT / 2), "img/jeanes/Ship0"))
         running = false;
@@ -377,13 +381,25 @@ int main(int argc, char** argv) {
         SDL_Log("Open font Err %s", TTF_GetError());
         return -1;
     }
-    SDL_Color fgcolor = {255, 255, 0}, bgcolor = {0, 0, 0};
+    TTF_Font *bigfont = TTF_OpenFont("C:\\Windows\\Fonts\\MALGUN.TTF", 48);
+    if(!bigfont) {
+        SDL_Log("Open bigfont Err %s", TTF_GetError());
+        return -1;
+    }
+    SDL_Color color_yellow = {255, 255, 0}, color_pink = {255, 150, 255}, color_black = {0, 0, 0};
     char str_score[20];
     sprintf(str_score, "HITS : %d", score);
-    AA_Texture *score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &fgcolor);
+    AA_Texture *score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &color_yellow);
     SDL_FRect score_rectf = {10.0f, 10.0f, (float)score_f->w, (float)score_f->h};
-    AA_Texture *score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &bgcolor);
+    AA_Texture *score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &color_black);
     SDL_FRect score_rectb = {12.0f, 12.0f, (float)score_b->w, (float)score_b->h};
+    AA_Texture *text_gameover = AA_load_ttf_texture(AA_renderer, bigfont, "GAME OVER", &color_pink);
+    SDL_FRect text_gameover_rect = {
+        (WINDOW_WIDTH - text_gameover->w) / 2.0f,
+        (WINDOW_HEIGHT - text_gameover->h) / 2.0f,
+        (float)text_gameover->w,
+        (float)text_gameover->h
+    };
 
     // Mixer Test : 추후 AA 함수로 만들 예정
     Mix_Chunk *snd_fire = Mix_LoadWAV("sound/215423__taira-komori__pyo-1.mp3");
@@ -398,14 +414,26 @@ int main(int argc, char** argv) {
         return 1;
     }
     Mix_VolumeChunk(snd_boom, 12);
+    Mix_Chunk *player_boom = Mix_LoadWAV("sound/215599__taira-komori__explosion02.mp3");
+    if(!player_boom) {
+        SDL_Log("Mixer LoadWAV Err %s", Mix_GetError());
+        return 1;
+    }
+    Mix_VolumeChunk(player_boom, 12);
 
+    /////////////////
+    // Game state & configuration
+    /////////////////
     SDL_Event event;
     const Uint8 *key_state;
     int dx, dy;
-    int frame = 0, b_frame = 0;
-    int game_state = AA_STATE_READY;
+    int frame = 0, b_frame = -1, o_frame = -1;
+    int game_state = AA_STATE_INGAME;
     // Uint32 start_tick[1200], end_tick[1200]; // DEBUG
 
+    /////////////////
+    // Game progressing
+    /////////////////
     while(running) {
         // start_tick[frame] = SDL_GetTicks();
         SDL_PollEvent(&event);
@@ -422,106 +450,129 @@ int main(int argc, char** argv) {
             break;
         }
 
-        dx = dy = 0;
-        if(key_state[SDL_SCANCODE_UP]) dy-=5;
-        if(key_state[SDL_SCANCODE_DOWN]) dy+=5;
-        if(key_state[SDL_SCANCODE_LEFT]) dx-=5;
-        if(key_state[SDL_SCANCODE_RIGHT]) dx+=5;
-        if(dx && dy) {
-            AA_Player[0].r.x += (float)(dx * 0.707f);
-            AA_Player[0].r.y += (float)(dy * 0.707f);
-        }
-        else {
-            AA_Player[0].r.x += (float)dx;
-            AA_Player[0].r.y += (float)dy;
-        }
-        if(AA_Player[0].r.x < 0.0f)
-            AA_Player[0].r.x = 0.0f;
-        if(AA_Player[0].r.x > (float)WINDOW_WIDTH - AA_Player[0].r.w)
-            AA_Player[0].r.x = (float)WINDOW_WIDTH - AA_Player[0].r.w;
-        if(AA_Player[0].r.y < 0.0f) 
-            AA_Player[0].r.y = 0.0f;
-        if(AA_Player[0].r.y > (float)WINDOW_HEIGHT - AA_Player[0].r.h)
-            AA_Player[0].r.y = (float)WINDOW_HEIGHT - AA_Player[0].r.h;
-        AA_Player[0].cx = AA_Player[0].r.x + AA_Player[0].r.w/2 + 13; // 보정
-        AA_Player[0].cy = AA_Player[0].r.y + AA_Player[0].r.h/2;
-
-        if(key_state[SDL_SCANCODE_A]) { // 탄환 발사
-            if(b_frame % 40 == 0) { // Autofire Term 설정
-                int idx = AA_Bullet_t::curr_index();
-                AA_Bullet[idx].load(weapon_normal, 
-                    AA_Player[0].r.x + AA_Player[0].r.w,
-                    AA_Player[0].r.y + AA_Player[0].r.h/2,
-                    0.5f, &SDL_Rect({39, 45, 45, 33}));
-                //AA_Bullet[idx].r.x = AA_Player[0].r.x + AA_Player[0].r.w;
-                //AA_Bullet[idx].r.y = AA_Player[0].r.y + (AA_Player[0].r.h - AA_Bullet[idx].r.h)/2.0f;
-                AA_Bullet[idx].dx = 10.0f;
-                Mix_PlayChannel(-1, snd_fire, 0);
+        if(game_state == AA_STATE_INGAME) {
+            dx = dy = 0;
+            if(key_state[SDL_SCANCODE_UP]) dy-=5;
+            if(key_state[SDL_SCANCODE_DOWN]) dy+=5;
+            if(key_state[SDL_SCANCODE_LEFT]) dx-=5;
+            if(key_state[SDL_SCANCODE_RIGHT]) dx+=5;
+            if(dx && dy) {
+                AA_Player[0].r.x += (float)(dx * 0.707f);
+                AA_Player[0].r.y += (float)(dy * 0.707f);
             }
-        }
-        else {
-            b_frame = -1;
-        }
-
-        // 배경 그리기
-        AA_Background.blit();
-
-        // 운석 생성
-        if(frame % 30 == 29) { // 0.5초마다 운석 생성
-            int idx = AA_Object_t::curr_index();
-            AA_Object[idx].load(asteroid,
-                (float)WINDOW_WIDTH,
-                (float)rand() * (WINDOW_HEIGHT - asteroid->h*0.5f) / RAND_MAX,
-                0.5f);
-            AA_Object[idx].dx = -(float)(rand() % 5 + 3);
-        }
-
-        // 충돌 판정 (플레이어 기체와 적 오브젝트)
-        // 1. 먼저 폭발 애니메이션 텍스쳐 생성 및 폭발 오브젝트 클래스 및 인스턴스 공간 생성
-        // 2. 거리판정할지 사각판정할지 선택 (텍스쳐 굴곡 판정은 어려우므로 패스, 거리판정 결정)
-        // 3. 충돌 판정 및 폭발 로직 이곳에 코딩
-        for(int j=0; j<AA_CAP_OF_OBJ; j++) { // 적 오브젝트
-            if(AA_Object[j].activated
-                && is_collided2(AA_Player[0].cx, AA_Player[0].cy, AA_Player[0].radius,
-                AA_Object[j].cx, AA_Object[j].cy, AA_Object[j].radius))
-            {
-                running = false; // 일단 걍 바로 끝내자.
-                goto QUIT;
+            else {
+                AA_Player[0].r.x += (float)dx;
+                AA_Player[0].r.y += (float)dy;
             }
-        }
+            if(AA_Player[0].r.x < 0.0f)
+                AA_Player[0].r.x = 0.0f;
+            if(AA_Player[0].r.x > (float)WINDOW_WIDTH - AA_Player[0].r.w)
+                AA_Player[0].r.x = (float)WINDOW_WIDTH - AA_Player[0].r.w;
+            if(AA_Player[0].r.y < 0.0f) 
+                AA_Player[0].r.y = 0.0f;
+            if(AA_Player[0].r.y > (float)WINDOW_HEIGHT - AA_Player[0].r.h)
+                AA_Player[0].r.y = (float)WINDOW_HEIGHT - AA_Player[0].r.h;
+            AA_Player[0].cx = AA_Player[0].r.x + AA_Player[0].r.w/2 + 13; // 보정
+            AA_Player[0].cy = AA_Player[0].r.y + AA_Player[0].r.h/2;
 
-        // 충돌 판정 (플레이어 탄환과 적 오브젝트)
-        for(int i=0; i<AA_CAP_OF_BULLET; i++) { // 탄환
-            if(AA_Bullet[i].activated) {
-                for(int j=0; j<AA_CAP_OF_OBJ; j++) { // 적 오브젝트
-                    if(AA_Object[j].activated) {
-                        if(is_collided2(AA_Bullet[i].cx, AA_Bullet[i].cy, AA_Bullet[i].radius,
-                            AA_Object[j].cx, AA_Object[j].cy, AA_Object[j].radius))
-                        {
-                            // 충돌 폭발 직전의 상황을 그려주어서 어색함을 없앰.
-                            AA_Bullet[i].blit();
-                            AA_Object[j].blit();
-                            AA_Explosion[AA_Explosion_t::curr_index()].load(
-                                explosion_anim, AA_Object[j].cx, AA_Object[j].cy, 0.7f, 5
-                            );
-                            Mix_PlayChannel(-1, snd_boom, 0);
-                            AA_Bullet[i].free();
-                            AA_Object[j].free();
+            if(key_state[SDL_SCANCODE_A]) { // 탄환 발사
+                if(b_frame % 40 == 0) { // Autofire Term 설정
+                    int idx = AA_Bullet_t::curr_index();
+                    AA_Bullet[idx].load(weapon_normal, 
+                        AA_Player[0].r.x + AA_Player[0].r.w,
+                        AA_Player[0].r.y + AA_Player[0].r.h/2,
+                        0.5f, &SDL_Rect({39, 45, 45, 33}));
+                    //AA_Bullet[idx].r.x = AA_Player[0].r.x + AA_Player[0].r.w;
+                    //AA_Bullet[idx].r.y = AA_Player[0].r.y + (AA_Player[0].r.h - AA_Bullet[idx].r.h)/2.0f;
+                    AA_Bullet[idx].dx = 10.0f;
+                    Mix_PlayChannel(-1, snd_fire, 0);
+                }
+            }
+            else {
+                b_frame = -1;
+            }
 
-                            sprintf(str_score, "HITS : %d", ++score);
-                            AA_free_texture(score_f);
-                            AA_free_texture(score_b);
-                            score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &fgcolor);
-                            score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &bgcolor);
+            // 운석 생성
+            if(frame % 30 == 29) { // 0.5초마다 운석 생성
+                int idx = AA_Object_t::curr_index();
+                AA_Object[idx].load(asteroid,
+                    (float)WINDOW_WIDTH,
+                    (float)rand() * (WINDOW_HEIGHT - asteroid->h*0.5f) / RAND_MAX,
+                    0.5f);
+                AA_Object[idx].dx = -(float)(rand() % 5 + 3);
+            }
 
-                            // 탄환이 두개의 적 오브젝트에 동시에 맞았을 경우 생기는 
-                            // 널 포인터 오류를 방지하기 위하여 반드시 break 를 해아 한다.
-                            break;
+            // 충돌 판정 (플레이어 기체와 적 오브젝트)
+            // 1. 먼저 폭발 애니메이션 텍스쳐 생성 및 폭발 오브젝트 클래스 및 인스턴스 공간 생성
+            // 2. 거리판정할지 사각판정할지 선택 (텍스쳐 굴곡 판정은 어려우므로 패스, 거리판정 결정)
+            // 3. 충돌 판정 및 폭발 로직 이곳에 코딩
+            for(int j=0; j<AA_CAP_OF_OBJ; j++) { // 적 오브젝트
+                if(AA_Object[j].activated
+                    && is_collided2(AA_Player[0].cx, AA_Player[0].cy, AA_Player[0].radius,
+                    AA_Object[j].cx, AA_Object[j].cy, AA_Object[j].radius))
+                {
+                    game_state = AA_STATE_GAMEOVER;
+                    o_frame = 0;
+                }
+            }
+
+            // 충돌 판정 (플레이어 탄환과 적 오브젝트)
+            for(int i=0; i<AA_CAP_OF_BULLET; i++) { // 탄환
+                if(AA_Bullet[i].activated) {
+                    for(int j=0; j<AA_CAP_OF_OBJ; j++) { // 적 오브젝트
+                        if(AA_Object[j].activated) {
+                            if(is_collided2(AA_Bullet[i].cx, AA_Bullet[i].cy, AA_Bullet[i].radius,
+                                AA_Object[j].cx, AA_Object[j].cy, AA_Object[j].radius))
+                            {
+                                // 충돌 폭발 직전의 상황을 그려주어서 어색함을 없앰.
+                                AA_Bullet[i].blit();
+                                AA_Object[j].blit();
+                                AA_Explosion[AA_Explosion_t::curr_index()].load(
+                                    explosion_anim, AA_Object[j].cx, AA_Object[j].cy, 0.7f, 5
+                                );
+                                Mix_PlayChannel(-1, snd_boom, 0);
+                                AA_Bullet[i].free();
+                                AA_Object[j].free();
+
+                                sprintf(str_score, "HITS : %d", ++score);
+                                AA_free_texture(score_f);
+                                AA_free_texture(score_b);
+                                score_f = AA_load_ttf_texture(AA_renderer, font, str_score, &color_yellow);
+                                score_b = AA_load_ttf_texture(AA_renderer, font, str_score, &color_black);
+                                score_rectf.h = (float)score_f->h, score_rectf.w = (float)score_f->w;
+                                score_rectb.h = (float)score_b->h, score_rectb.w = (float)score_b->w;
+
+                                // 탄환이 두개의 적 오브젝트에 동시에 맞았을 경우 생기는 
+                                // 널 포인터 오류를 방지하기 위하여 반드시 break 를 해아 한다.
+                                break;
+                            }
                         }
                     }
                 }
             }
         }
+        if(game_state == AA_STATE_GAMEOVER) {
+            if(o_frame == 0) {
+                AA_Explosion[AA_Explosion_t::curr_index()].load(
+                    explosion_anim, AA_Player[0].cx, AA_Player[0].cy
+                );
+                Mix_PlayChannel(-1, player_boom, 0);
+                for(int i=0; i<AA_CAP_OF_OBJ; i++) { // 적 오브젝트 제거
+                    if(AA_Object[i].activated) {
+                        AA_Object[i].free();
+                    }
+                }
+            }
+            if(o_frame == 150) {
+                running = false;
+                goto QUIT;
+            }
+            ++o_frame;
+        }
+
+        // 그리기!!!!
+        // 배경 그리기
+        AA_Background.blit();
 
         // 폭발 애니메이션 그리기
         for(int i=0; i<AA_CAP_OF_EXPLOSION; i++) {
@@ -547,7 +598,14 @@ int main(int argc, char** argv) {
         }
 
         // 플레이어 기체 그리기
-        AA_Player[0].blit();
+        if(game_state == AA_STATE_INGAME) {
+            AA_Player[0].blit();
+        }
+
+        // GAME OVER 표시
+        if(game_state == AA_STATE_GAMEOVER) {
+            SDL_RenderCopyF(AA_renderer, text_gameover->tex, NULL, &text_gameover_rect);
+        }
 
         // Score 표시
         SDL_RenderCopyF(AA_renderer, score_b->tex, NULL, &score_rectb);
@@ -566,6 +624,7 @@ QUIT:
     AA_free_texture(explosion_anim);
     AA_free_texture(score_f);
     AA_free_texture(score_b);
+    AA_free_texture(text_gameover);
     Mix_FreeChunk(snd_fire);
     Mix_FreeChunk(snd_boom);
     AA_Player[0].free();
