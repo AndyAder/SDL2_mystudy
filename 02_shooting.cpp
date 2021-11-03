@@ -3,7 +3,6 @@
 #include <SDL_ttf.h>
 #include <SDL_mixer.h>
 
-#include <cstdio> // for sprintf
 #include <cstdlib> // rand
 #include <ctime>
 
@@ -93,6 +92,7 @@ struct AA_Texture {
     }
     ~AA_Texture() {
         SDL_DestroyTexture(tex);
+        //SDL_Log("%s (%p)", SDL_GetError(), tex);
     }
 };
 
@@ -119,7 +119,7 @@ AA_Texture *AA_load_ttf_texture(SDL_Renderer *renderer, TTF_Font *font,
     return tex;
 }
 
-void AA_free_texture(AA_Texture *t) {
+void AA_free_texture(AA_Texture *&t) {
     if(t) delete t;
     t = NULL;
 }
@@ -182,7 +182,7 @@ struct AA_Player_t {
     int load(SDL_Renderer *renderer, float x, float y, const char *s) {
         char buff[101];
         for(int i=0; i<AA_PLAYER_NUM_OF_IMG; i++) {
-            sprintf(buff, "%s%d.png", s, i+1);
+            SDL_snprintf(buff, 101, "%s%d.png", s, i+1);
             atex[i] = AA_load_texture(renderer, buff, &r);
             if(!atex[i]) return 1;
         }
@@ -255,12 +255,16 @@ struct AA_Bullet_t {
     AA_Texture *atex;
     SDL_Rect src_r;
     SDL_FRect r;
+    int hp;
+    double degree;
     float dx, dy, cx, cy, radius;
 
     static int curr_index();
-    void load(AA_Texture *t, float start_x, float start_y, float mag_rate = 1.0f, SDL_Rect *s = NULL) {
+    void load(AA_Texture *t, int h, float start_x, float start_y, float mag_rate = 1.0f, double deg = 0.0, SDL_Rect *s = NULL) {
         activated = true;
         atex = t;
+        hp = h;
+        degree = deg;
         if(!s) {
             src_r = {0, 0, 0, 0};
             r.h = t->h * mag_rate, r.w = t->w * mag_rate;
@@ -269,16 +273,17 @@ struct AA_Bullet_t {
             src_r = *s;
             r.h = s->h * mag_rate, r.w = s->w * mag_rate;
         }
+        dx = dy = 0.0f;
         r.x = start_x, r.y = start_y - r.h/2;
         cx = r.x + r.w/2, cy = r.y + r.h/2;
         radius = r.h/2;
     }
     void blit() {
         if(src_r.w == 0) {
-            SDL_RenderCopyF(atex->renderer, atex->tex, NULL, &r);
+            SDL_RenderCopyExF(atex->renderer, atex->tex, NULL, &r, degree, &SDL_FPoint({0.0f, r.h/2}), SDL_FLIP_NONE);
         }
         else {
-            SDL_RenderCopyF(atex->renderer, atex->tex, &src_r, &r);
+            SDL_RenderCopyExF(atex->renderer, atex->tex, &src_r, &r, degree, &SDL_FPoint({0.0f, r.h/2}), SDL_FLIP_NONE);
         }
         r.x += dx, r.y += dy;
         cx += dx, cy += dy;
@@ -437,6 +442,7 @@ int main(int argc, char** argv) {
     // Asteroid.png : iCCP 정보 깨짐 - libpng 경고 발생
     AA_Texture *asteroid = AA_load_texture(AA_renderer, "img/jeanes/Asteroid.png");
     AA_Texture *weapon_normal = AA_load_texture(AA_renderer, "img/wenrexa/02.png");
+    AA_Texture *weapon_power = AA_load_texture(AA_renderer, "img/wenrexa/51.png");
     AA_Texture *explosion_anim = AA_load_texture(AA_renderer, "img/explosion_set.png");
     if(!asteroid || !weapon_normal || !explosion_anim) running = false;
 
@@ -466,16 +472,16 @@ int main(int argc, char** argv) {
     SDL_Color color_yellow = {255, 255, 0}, color_pink = {255, 150, 255}, color_black = {0, 0, 0}, color_white = {255, 255, 255};
     SDL_Color color_mint = {89, 255, 197}, color_orange = {255, 154, 38}, color_skyblue = {107, 206, 255};
 
-    char str_tmp[20];
+    char str_tmp[30];
     // init score
-    sprintf(str_tmp, "SCORE : %d", score);
+    SDL_snprintf(str_tmp, 30, "SCORE : %d", score);
     AA_Texture *score_f = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_yellow);
     SDL_FRect score_rectf = {10.0f, 10.0f, (float)score_f->w, (float)score_f->h};
     AA_Texture *score_b = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_black);
     SDL_FRect score_rectb = {12.0f, 12.0f, (float)score_b->w, (float)score_b->h};
 
     // init hiscore
-    sprintf(str_tmp, "HISCORE : %d", hiscore);
+    SDL_snprintf(str_tmp, 30, "HISCORE : %d", hiscore);
     AA_Texture *hiscore_f = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_orange);
     SDL_FRect hiscore_rectf = {200.0f, 10.0f, (float)hiscore_f->w, (float)hiscore_f->h};
     AA_Texture *hiscore_b = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_black);
@@ -510,6 +516,12 @@ int main(int argc, char** argv) {
         return 1;
     }
     Mix_VolumeChunk(snd_fire, 12);
+    Mix_Chunk *snd_big_fire = Mix_LoadWAV("sound/215421__taira-komori__beam.mp3");
+    if(!snd_big_fire) {
+        SDL_Log("Mixer LoadWAV Err %s", Mix_GetError());
+        return 1;
+    }
+    Mix_VolumeChunk(snd_big_fire, 12);
     Mix_Chunk *snd_boom = Mix_LoadWAV("sound/215595__taira-komori__bomb.mp3");
     if(!snd_boom) {
         SDL_Log("Mixer LoadWAV Err %s", Mix_GetError());
@@ -571,7 +583,7 @@ int main(int argc, char** argv) {
                 frame = 0;
                 score = 0;
                 shot_frame = 40;
-                sprintf(str_tmp, "SCORE : %d", score);
+                SDL_snprintf(str_tmp, 30, "SCORE : %d", score);
                 AA_free_texture(score_f);
                 AA_free_texture(score_b);
                 score_f = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_yellow);
@@ -612,15 +624,63 @@ int main(int argc, char** argv) {
             if(key_state[SDL_SCANCODE_A]) { // 탄환 발사
                 if(b_frame % shot_frame == 0) { // Autofire Term 설정
                     int idx = AA_Bullet_t::curr_index();
-                    AA_Bullet[idx].load(weapon_normal, 
-                        AA_Player[0].r.x + AA_Player[0].r.w,
-                        AA_Player[0].r.y + AA_Player[0].r.h/2,
-                        0.5f, &SDL_Rect({39, 45, 45, 33}));
-                    //AA_Bullet[idx].r.x = AA_Player[0].r.x + AA_Player[0].r.w;
-                    //AA_Bullet[idx].r.y = AA_Player[0].r.y + (AA_Player[0].r.h - AA_Bullet[idx].r.h)/2.0f;
+                    if(AA_Player[0].item[AA_ITEM_POWERUP]) {
+                        AA_Bullet[idx].load(weapon_power, 3,
+                            AA_Player[0].r.x + AA_Player[0].r.w,
+                            AA_Player[0].r.y + AA_Player[0].r.h/2,
+                            0.5f, 0.0, &SDL_Rect({17, 43, 176, 46}));
+                        Mix_PlayChannel(0, snd_big_fire, 0);
+                    }
+                    else {
+                        AA_Bullet[idx].load(weapon_normal, 1,
+                            AA_Player[0].r.x + AA_Player[0].r.w,
+                            AA_Player[0].r.y + AA_Player[0].r.h/2,
+                            0.5f, 0.0, &SDL_Rect({39, 45, 45, 33}));
+                        Mix_PlayChannel(0, snd_fire, 0);
+                    }
                     AA_Bullet[idx].dx = 10.0f;
+                    AA_Bullet[idx].dy = 0.0f;
                     if(AA_Player[0].item[AA_ITEM_BULLET_SPDUP]) AA_Bullet[idx].dx = 20.0f;
-                    Mix_PlayChannel(-1, snd_fire, 0);
+
+                    // 3way 발사
+                    if(AA_Player[0].item[AA_ITEM_3WAY]) {
+                        idx = AA_Bullet_t::curr_index();
+                        if(AA_Player[0].item[AA_ITEM_POWERUP]) {
+                            AA_Bullet[idx].load(weapon_power, 3,
+                                AA_Player[0].r.x + AA_Player[0].r.w,
+                                AA_Player[0].r.y + AA_Player[0].r.h/2,
+                                0.5f, -20.0, &SDL_Rect({17, 43, 176, 46}));
+                        }
+                        else {
+                            AA_Bullet[idx].load(weapon_normal, 1,
+                                AA_Player[0].r.x + AA_Player[0].r.w,
+                                AA_Player[0].r.y + AA_Player[0].r.h/2,
+                                0.5f, -20.0, &SDL_Rect({39, 45, 45, 33}));
+                        }
+                        AA_Bullet[idx].dx = 10.0f * SDL_cosf(-20.0f/180*3.14159f);
+                        AA_Bullet[idx].dy = 10.0f * SDL_sinf(-20.0f/180*3.14159f);
+                        AA_Bullet[idx].cy -= 15.0f;
+                        if(AA_Player[0].item[AA_ITEM_BULLET_SPDUP]) AA_Bullet[idx].dx *= 2.0f, AA_Bullet[idx].dy *= 2.0f;
+
+                        idx = AA_Bullet_t::curr_index();
+                        if(AA_Player[0].item[AA_ITEM_POWERUP]) {
+                            AA_Bullet[idx].load(weapon_power, 3,
+                                AA_Player[0].r.x + AA_Player[0].r.w,
+                                AA_Player[0].r.y + AA_Player[0].r.h/2,
+                                0.5f, 20.0, &SDL_Rect({17, 43, 176, 46}));
+                        }
+                        else {
+                            AA_Bullet[idx].load(weapon_normal, 1,
+                                AA_Player[0].r.x + AA_Player[0].r.w,
+                                AA_Player[0].r.y + AA_Player[0].r.h/2,
+                                0.5f, 20.0, &SDL_Rect({39, 45, 45, 33}));
+                        }
+                        AA_Bullet[idx].dx = 10.0f * SDL_cosf(20.0f/180*3.14159f);
+                        AA_Bullet[idx].dy = 10.0f * SDL_sinf(20.0f/180*3.14159f);
+                        AA_Bullet[idx].cy += 15.0f;
+                        if(AA_Player[0].item[AA_ITEM_BULLET_SPDUP]) AA_Bullet[idx].dx *= 2.0f, AA_Bullet[idx].dy *= 2.0f;
+
+                    }
                 }
             }
             else {
@@ -629,9 +689,9 @@ int main(int argc, char** argv) {
 
             // 운석 생성
             if(score < 10000) obj_create_period = 30;
-            else if(score < 60000) obj_create_period = -(score - 10000) / 2778 + 30;
-            else obj_create_period = 12;
-            if(frame % obj_create_period == 0) { // 기본 0.5초마다 운석 생성, 스코어가 증가할 때마다 최대 0.2초까지 단축
+            else if(score < 76672) obj_create_period = -(score - 10000) / 2778 + 30;
+            else obj_create_period = 6;
+            if(frame % obj_create_period == 0) { // 기본 0.5초마다 운석 생성, 스코어가 증가할 때마다 최대 0.1초까지 단축
                 int idx = AA_Object_t::curr_index();
                 AA_Object[idx].load(asteroid,
                     (float)WINDOW_WIDTH,
@@ -686,11 +746,11 @@ int main(int argc, char** argv) {
                                     AA_Item[idx].dx = -3.0f;
                                 }
                                 score += 100 + (int)AA_Object[j].r.x/10;
-                                AA_Bullet[i].free();
+                                --AA_Bullet[i].hp;
                                 AA_Object[j].free();
 
 
-                                sprintf(str_tmp, "SCORE : %d", score);
+                                SDL_snprintf(str_tmp, 30, "SCORE : %d", score);
                                 AA_free_texture(score_f);
                                 AA_free_texture(score_b);
                                 score_f = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_yellow);
@@ -700,7 +760,10 @@ int main(int argc, char** argv) {
 
                                 // 탄환이 두개의 적 오브젝트에 동시에 맞았을 경우 생기는 
                                 // 널 포인터 오류를 방지하기 위하여 반드시 break 를 해아 한다.
-                                break;
+                                if(!AA_Bullet[i].hp) {
+                                    AA_Bullet[i].free();
+                                    break;
+                                }
                             }
                         }
                     }
@@ -820,7 +883,7 @@ int main(int argc, char** argv) {
         SDL_RenderCopyF(AA_renderer, score_f->tex, NULL, &score_rectf);
         if(score > hiscore) {
             hiscore = score;
-            sprintf(str_tmp, "HISCORE : %d", hiscore);
+            SDL_snprintf(str_tmp, 30, "HISCORE : %d", hiscore);
             AA_free_texture(hiscore_f);
             AA_free_texture(hiscore_b);
             hiscore_f = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_orange);
@@ -834,12 +897,12 @@ int main(int argc, char** argv) {
         // Item 보유 시간 표시
         if(game_state == AA_STATE_INGAME) {
             for(int i=0, j=0; i<AA_PLAYER_NUM_OF_ITEM; i++) {
+                AA_free_texture(item_rtime[i]);
                 if(AA_Player[0].item[i]) {
-                    AA_free_texture(item_rtime[j]);
-                    sprintf(str_tmp, ": %d", AA_Player[0].item[i] / 60); 
-                    item_rtime[j] = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_mint);
+                    SDL_snprintf(str_tmp, 30, ": %d", AA_Player[0].item[i] / 60);
+                    item_rtime[i] = AA_load_ttf_texture(AA_renderer, font, str_tmp, &color_mint);
                     SDL_RenderCopyF(AA_renderer, item[i]->tex, NULL, &SDL_FRect({900.0f, 10.0f + j*35, (float)item[i]->w*0.5f, (float)item[i]->h*0.5f}));
-                    SDL_RenderCopyF(AA_renderer, item_rtime[j]->tex, NULL, &SDL_FRect({940.0f, 10.0f + j*35, (float)item_rtime[j]->w, (float)item_rtime[j]->h}));
+                    SDL_RenderCopyF(AA_renderer, item_rtime[i]->tex, NULL, &SDL_FRect({940.0f, 10.0f + j*35, (float)item_rtime[i]->w, (float)item_rtime[i]->h}));
                     ++j, --AA_Player[0].item[i];
                 }
             }
@@ -862,6 +925,7 @@ QUIT:
     }
     AA_free_texture(asteroid);
     AA_free_texture(weapon_normal);
+    AA_free_texture(weapon_power);
     AA_free_texture(explosion_anim);
     AA_free_texture(score_f);
     AA_free_texture(score_b);
@@ -871,7 +935,10 @@ QUIT:
     AA_free_texture(text_game_title);
     AA_free_texture(text_start_intro);
     Mix_FreeChunk(snd_fire);
+    Mix_FreeChunk(snd_big_fire);
     Mix_FreeChunk(snd_boom);
+    Mix_FreeChunk(player_boom);
+    Mix_FreeChunk(player_pick_item);
     AA_Player[0].free();
     AA_Background.free();
     AA_game_quit();
