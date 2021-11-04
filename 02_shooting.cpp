@@ -423,6 +423,10 @@ enum AA_Game_State {
     AA_STATE_INGAME = 4,
     AA_STATE_GAMEOVER = 8
 };
+enum AA_Game_Autogun_Fire_period {
+    AA_AUTOGUN_AUTO = 5,
+    AA_AUTOGUN_NORMAL = 15
+};
 
 int main(int argc, char** argv) {
     /////////////////
@@ -551,7 +555,7 @@ int main(int argc, char** argv) {
     int game_state = AA_STATE_READY;
 
     // Player[0] 에 대한 설정
-    int shot_frame = 40; // normal:40, auto:5
+    int shot_frame = AA_AUTOGUN_NORMAL; // normal:15, auto:5
     int player_speed = 5;
     // Uint32 start_tick[1200], end_tick[1200]; // DEBUG
 
@@ -582,7 +586,7 @@ int main(int argc, char** argv) {
                 }
                 frame = 0;
                 score = 0;
-                shot_frame = 40;
+                shot_frame = AA_AUTOGUN_NORMAL;
                 SDL_snprintf(str_tmp, 30, "SCORE : %d", score);
                 AA_free_texture(score_f);
                 AA_free_texture(score_b);
@@ -783,8 +787,8 @@ int main(int argc, char** argv) {
             }
 
             // 플레이어 아이템 보유에 따른 효과 
-            if(AA_Player[0].item[AA_ITEM_AUTOSHOT]) shot_frame = 5;
-            else shot_frame = 40;
+            if(AA_Player[0].item[AA_ITEM_AUTOSHOT]) shot_frame = AA_AUTOGUN_AUTO;
+            else shot_frame = AA_AUTOGUN_NORMAL;
             // if(AA_Player[0].item[AA_ITEM_3WAY]) {
             // }
             // if(AA_Player[0].item[AA_ITEM_BULLET_SPDUP]) {
