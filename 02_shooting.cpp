@@ -173,6 +173,13 @@ enum AA_Item_list {
     AA_ITEM_POWERUP = 3,
     AA_ITEM_SPDUP = 4
 };
+const char *AA_Item_name[] = {
+    "RAPID FIRE",
+    "3-WAY",
+    "BULLET-SPEEDUP",
+    "BULLET-POWERUP",
+    "SPEED UP"
+};
 struct AA_Player_t {
     AA_Texture *atex[AA_PLAYER_NUM_OF_IMG];
     SDL_FRect r;
@@ -390,6 +397,41 @@ int AA_Explosion_t::curr_index() {
     return AA_Explosion_t::pindex++;
 }
 
+// 6. In-game message
+const int AA_CAP_OF_INGAME_MESSAGE = 200;
+struct AA_Ingame_Message_t {
+    static int pindex; // 들어갈 번지수
+    bool activated;
+    AA_Texture *atex;
+    SDL_FRect r;
+    int fduration;
+    float cx, cy;
+
+    static int curr_index();
+
+    void load(SDL_Renderer *renderer, TTF_Font *font, float center_x, float center_y, const char *message, SDL_Color &c, int fd = 30) {
+        activated = true;
+        atex = AA_load_ttf_texture(renderer, font, message, &c, &r);
+        r.x = center_x - r.w/2, r.y = center_y - r.h/2;
+        fduration = fd;
+        cx = center_x, cy = center_y;
+    }
+    void blit() {
+        SDL_RenderCopyF(atex->renderer, atex->tex, NULL, &r);
+        if(--fduration == 0) free();
+    }
+    void free() {
+        activated = false;
+        AA_free_texture(atex);
+    }
+    AA_Ingame_Message_t() : activated(false), atex(NULL) {}
+} AA_Ingame_Message[AA_CAP_OF_INGAME_MESSAGE];
+int AA_Ingame_Message_t::pindex = 0;
+int AA_Ingame_Message_t::curr_index() {
+    if(AA_Ingame_Message_t::pindex == AA_CAP_OF_INGAME_MESSAGE) AA_Ingame_Message_t::pindex = 0;
+    return AA_Ingame_Message_t::pindex++;
+}
+
 // 사각형 판정법
 inline bool is_collided1(const SDL_FRect &r1, const SDL_FRect &r2) {
     if(r1.x + r1.w < r2.x || r2.x + r2.w < r1.x
@@ -470,6 +512,11 @@ int main(int argc, char** argv) {
     }
     TTF_Font *bigfont = TTF_OpenFont("C:\\Windows\\Fonts\\MALGUN.TTF", 48);
     if(!bigfont) {
+        SDL_Log("Open bigfont Err %s", TTF_GetError());
+        return -1;
+    }
+    TTF_Font *smallfont = TTF_OpenFont("C:\\Windows\\Fonts\\MALGUN.TTF", 15);
+    if(!smallfont) {
         SDL_Log("Open bigfont Err %s", TTF_GetError());
         return -1;
     }
@@ -625,7 +672,7 @@ int main(int argc, char** argv) {
             AA_Player[0].cx = AA_Player[0].r.x + AA_Player[0].r.w/2 + 13; // 보정
             AA_Player[0].cy = AA_Player[0].r.y + AA_Player[0].r.h/2;
 
-            if(key_state[SDL_SCANCODE_A]) { // 탄환 발사
+            if(key_state[SDL_SCANCODE_A] || key_state[SDL_SCANCODE_SPACE]) { // 탄환 발사
                 if(b_frame % shot_frame == 0) { // Autofire Term 설정
                     int idx = AA_Bullet_t::curr_index();
                     if(AA_Player[0].item[AA_ITEM_POWERUP]) {
@@ -749,7 +796,13 @@ int main(int argc, char** argv) {
                                     );
                                     AA_Item[idx].dx = -3.0f;
                                 }
-                                score += 100 + (int)AA_Object[j].r.x/10;
+                                int hit_score = 100 + (int)AA_Object[j].r.x/10;
+                                SDL_snprintf(str_tmp, 30, "%d", hit_score);
+                                AA_Ingame_Message[AA_Ingame_Message_t::curr_index()].load(
+                                    AA_renderer, smallfont, AA_Object[j].cx, AA_Object[j].cy,
+                                    str_tmp, color_skyblue
+                                );
+                                score += hit_score;
                                 --AA_Bullet[i].hp;
                                 AA_Object[j].free();
 
@@ -780,7 +833,11 @@ int main(int argc, char** argv) {
                     && is_collided2(AA_Player[0].cx, AA_Player[0].cy, AA_Player[0].radius,
                     AA_Item[i].cx, AA_Item[i].cy, AA_Item[i].radius))
                 {
-                    AA_Player[0].item[AA_Item[i].kind] += 720;
+                    AA_Player[0].item[AA_Item[i].kind] += 900; // 15초
+                    AA_Ingame_Message[AA_Ingame_Message_t::curr_index()].load(
+                        AA_renderer, smallfont, AA_Item[i].cx, AA_Item[i].cy,
+                        AA_Item_name[AA_Item[i].kind], color_skyblue
+                    );
                     Mix_PlayChannel(-1, player_pick_item, 0);
                     AA_Item[i].free();
                 }
@@ -861,6 +918,13 @@ int main(int argc, char** argv) {
         for(int i=0; i<AA_CAP_OF_EXPLOSION; i++) {
             if(AA_Explosion[i].activated) {
                 AA_Explosion[i].blit();
+            }
+        }
+
+        // In-game Message 그리기
+        for(int i=0; i<AA_CAP_OF_INGAME_MESSAGE; i++) {
+            if(AA_Ingame_Message[i].activated) {
+                AA_Ingame_Message[i].blit();
             }
         }
 
